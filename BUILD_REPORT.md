@@ -41,6 +41,7 @@ libstdc++.so.6, libm.so.6, libgcc_s.so.1, libc.so.6, ld-linux  -> 0 libboost_*, 
 ## Git (branch py3-boost, pushed to origin ATB-UQ/mogli; master untouched)
 - 8f18536 Build system: scikit-build-core packaging, CMake for Python3/static Boost.Python/LEMON, -fcommon
 - bb0cae2 boosting.cpp: Python 3 port (...)   <- HEAD
+- 6db7ad3 Add BUILD_REPORT.md (this file; pushed)
 Identity: Martin Stroet (copied from ~/ATB config).
 
 ## Not done / next
