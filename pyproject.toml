@@ -1,0 +1,20 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "mogli"
+version = "0.1.0+fdb2019"
+description = "mogli (ee6872e, Boost.Python build for Python 3), imported as libmogli"
+requires-python = ">=3.13"
+license = { text = "see repository" }
+
+[tool.scikit-build]
+minimum-version = "0.10"
+cmake.version = ">=3.18"
+cmake.build-type = "Release"          # CMakeLists sets -O3 -DNDEBUG -std=c++11 (matches legacy build)
+wheel.packages = []                   # no python package: libmogli.so goes to the wheel top level
+wheel.py-api = ""                     # not abi3 (Boost.Python uses the full API)
+build-dir = "build/{wheel_tag}"
+sdist.include = ["lib/msgpack-c/include", "lib/msgpack-c/external", "lib/nauty", "lib/lad", "include", "src"]
+sdist.exclude = ["build", "dist", ".git"]

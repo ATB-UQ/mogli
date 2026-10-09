@@ -30,3 +30,9 @@
 
 # IntelliJ
 .idea/
+
+# py3 build
+/build/
+/dist/
+*.egg-info/
+__pycache__/
