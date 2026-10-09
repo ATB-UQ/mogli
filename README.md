@@ -80,3 +80,35 @@ Iterating over all neighbors of a node:
             Node w = mol.get_opposite_node(v, e);
     }
     
+
+---
+
+# py3-boost branch: Python 3.13 build of ee6872e (Path A, Boost.Python, algorithm unchanged)
+
+Gate G1 build half (ATB `docs/fragments_migration_plan.md` §4). Imports as `libmogli`, as FDB uses it.
+
+## Build
+    scripts/build_lemon.sh                       # LEMON 1.3.1 static -fPIC -> ~/.cache/mogli-build/lemon-1.3.1
+    scripts/build_boost_python.sh [/usr/bin/python3.13]   # Boost 1.86.0 python313, STATIC -fPIC -> ~/.cache/mogli-build/boost-1.86.0-py3.13
+    uv build --wheel -p /usr/bin/python3.13 .    # or: python3.13 -m build --wheel
+Both scripts download into `$MOGLI_CACHE/dl` (default `~/.cache/mogli-build`) and verify sha256. CMake finds Boost/LEMON via
+`BOOST_ROOT` / `LIBLEMON_ROOT` env vars (or `-D`), else the cache dirs. Submodules (`lib/msgpack-c`) must be initialised;
+msgpack-c, nauty and lad are the vendored copies. Flags: Release = `-O3 -DNDEBUG -std=c++11 -fPIC` (C: `-O3 -DNDEBUG -std=c99 -fcommon -fPIC`),
+same as the legacy build. libboost_python is linked statically; `ldd` shows only libstdc++/libm/libgcc_s/libc.
+
+## Python 3 changes (src/util/boosting.cpp)
+int/str checks via `mogli_is_int`/`mogli_is_str` (`#if PY_MAJOR_VERSION >= 3`: int fitting a C int -> `int`, else `long`; str = unicode);
+`__next__` next to `next`; `pack_*`/`hash_*` return `bytes`; `AnyToPython::convert` now raises TypeError instead of
+falling off the end (was UB).
+
+## Vector iteration (the return_internal_reference problem)
+Kept reference semantics, no `return_by_value` copies of Match:
+- `MoleculeVector`/`FragmentVector` hold `shared_ptr<T>`. `return_internal_reference` wrapped the shared_ptr object itself
+  (not a `T`), so elements could not be passed to any `T&` method. Now `return_by_value`, which goes through the class's registered
+  `shared_ptr<T>` holder: Python receives the *same* C++ object, lifetime shared (no copy).
+- `MatchVector` holds `Match` by value; `return_internal_reference<>` works there (custodian keeps the vector alive) and is unchanged
+  from the py2 build. The spike's "all three fail" was only true for the shared_ptr vectors.
+
+## Open points for G1
+`unpack_*` reverses node order, so re-pack of an unpacked molecule is not byte-identical, and `hash_canonization` depends on input atom
+order. Unverified against py2 (no py2 build here): compare in the G1 harness.

@@ -2,6 +2,7 @@
 // Created by martin on 24/10/16.
 //
 
+#include <climits>
 #include <boost/python.hpp>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 #include "../../include/canonization.h"
@@ -10,6 +11,38 @@
 
 using namespace boost::python;
 using namespace mogli;
+
+// ---- Python 2 / 3 shims -------------------------------------------------------------------
+// py2 distinguishes int/long and str/unicode; py3 has one int type. On py3, an int that fits a C
+// int is treated as the py2 "int" (stored as int in boost::any), larger ones as "long".
+#if PY_MAJOR_VERSION >= 3
+static inline bool mogli_is_int(PyObject* o) {
+  if (!PyLong_Check(o) || PyBool_Check(o)) return false;
+  int overflow = 0;
+  long v = PyLong_AsLongAndOverflow(o, &overflow);
+  if (v == -1 && PyErr_Occurred()) { PyErr_Clear(); return false; }
+  return !overflow && v >= INT_MIN && v <= INT_MAX;
+}
+static inline bool mogli_is_str(PyObject* o) { return PyUnicode_Check(o); }
+#else
+static inline bool mogli_is_int(PyObject* o) { return PyInt_Check(o); }
+static inline bool mogli_is_str(PyObject* o) { return PyString_Check(o); }
+#endif
+
+// Packed/hashed data is binary: return `bytes` (py2: str), never text.
+struct Bytes { std::string s; explicit Bytes(const std::string &v) : s(v) {} };
+struct BytesToPython {
+  static PyObject* convert(Bytes const& b) { return PyBytes_FromStringAndSize(b.s.data(), b.s.size()); }
+};
+static Bytes py_pack_canonization(const Canonization &o) { return Bytes(pack_canonization(o)); }
+static Bytes py_hash_canonization(const Canonization &o) { return Bytes(hash_canonization(o)); }
+static Bytes py_pack_fcanonization(const FragmentCanonization &o) { return Bytes(pack_fcanonization(o)); }
+static Bytes py_hash_fcanonization(const FragmentCanonization &o) { return Bytes(hash_fcanonization(o)); }
+static Bytes py_pack_molecule1(const Molecule &o) { return Bytes(pack_molecule(o)); }
+static Bytes py_pack_molecule2(const boost::shared_ptr<Molecule> &o) { return Bytes(pack_molecule(o)); }
+static Bytes py_pack_fragment1(const Fragment &o) { return Bytes(pack_fragment(o)); }
+static Bytes py_pack_fragment2(const boost::shared_ptr<Fragment> &o) { return Bytes(pack_fragment(o)); }
+static Bytes py_pack_match(const Match &o) { return Bytes(pack_match(o)); }
 
 inline boost::python::object pass_through(boost::python::object const& o) { return o; }
 
@@ -31,12 +64,14 @@ struct iterator_wrappers {
   wrap(const char* python_name) {
     class_<KlassIter>(python_name)
         .def("next", next)
+        .def("__next__", next)
         .def("__iter__", pass_through);
   }
 
 };
 
 BOOST_PYTHON_MODULE(libmogli) {
+  to_python_converter<Bytes, BytesToPython>();
 
   struct AnyToPython {
     static PyObject* convert(boost::any const& obj) {
@@ -50,6 +85,9 @@ BOOST_PYTHON_MODULE(libmogli) {
         return incref(boost::python::object(boost::any_cast<double>(obj)).ptr());
       else if (obj.type() == typeid(std::string))
         return incref(boost::python::object(boost::any_cast<std::string>(obj)).ptr());
+      // unsupported payload type: raise instead of falling off the end (was undefined behaviour)
+      PyErr_SetString(PyExc_TypeError, "mogli: unsupported property type in boost::any");
+      return NULL;
     }
   };
 
@@ -59,7 +97,7 @@ BOOST_PYTHON_MODULE(libmogli) {
     }
 
     static void* convertible(PyObject* object_ptr) {
-      if (PyBool_Check(object_ptr) || PyInt_Check(object_ptr) || PyLong_Check(object_ptr) || PyFloat_Check(object_ptr) || PyString_Check(object_ptr))
+      if (PyBool_Check(object_ptr) || mogli_is_int(object_ptr) || PyLong_Check(object_ptr) || PyFloat_Check(object_ptr) || mogli_is_str(object_ptr))
         return object_ptr;
       else
         return 0;
@@ -72,7 +110,7 @@ BOOST_PYTHON_MODULE(libmogli) {
         void *storage = ((converter::rvalue_from_python_storage<boost::any> *) data)->storage.bytes;
         new(storage) boost::any(value);
         data->convertible = storage;
-      } else if (PyInt_Check(obj_ptr)) {
+      } else if (mogli_is_int(obj_ptr)) {
         int value = extract<int>(obj_ptr);
         void *storage = ((converter::rvalue_from_python_storage<boost::any> *) data)->storage.bytes;
         new(storage) boost::any(value);
@@ -87,7 +125,7 @@ BOOST_PYTHON_MODULE(libmogli) {
         void *storage = ((converter::rvalue_from_python_storage<boost::any> *) data)->storage.bytes;
         new(storage) boost::any(value);
         data->convertible = storage;
-      } else if (PyString_Check(obj_ptr)) {
+      } else if (mogli_is_str(obj_ptr)) {
         std::string value = extract<std::string>(obj_ptr);
         void *storage = ((converter::rvalue_from_python_storage<boost::any> *) data)->storage.bytes;
         new(storage) boost::any(value);
@@ -101,25 +139,19 @@ BOOST_PYTHON_MODULE(libmogli) {
   // register the from-python converter
   AnyFromPython();
 
-  std::string (*pack_fragment1)(const Fragment&) = &pack_fragment;
-  std::string (*pack_fragment2)(const boost::shared_ptr<Fragment>&) = &pack_fragment;
-
-  std::string (*pack_molecule1)(const Molecule&) = &pack_molecule;
-  std::string (*pack_molecule2)(const boost::shared_ptr<Molecule>&) = &pack_molecule;
-
-  def("pack_canonization", pack_canonization);
+  def("pack_canonization", py_pack_canonization);
   def("unpack_canonization", unpack_canonization);
-  def("hash_canonization", hash_canonization);
-  def("pack_fcanonization", pack_fcanonization);
+  def("hash_canonization", py_hash_canonization);
+  def("pack_fcanonization", py_pack_fcanonization);
   def("unpack_fcanonization", unpack_fcanonization);
-  def("hash_fcanonization", hash_fcanonization);
-  def("pack_molecule", pack_molecule1);
-  def("pack_molecule", pack_molecule2);
+  def("hash_fcanonization", py_hash_fcanonization);
+  def("pack_molecule", py_pack_molecule1);
+  def("pack_molecule", py_pack_molecule2);
   def("unpack_molecule", unpack_molecule);
-  def("pack_fragment", pack_fragment1);
-  def("pack_fragment", pack_fragment2);
+  def("pack_fragment", py_pack_fragment1);
+  def("pack_fragment", py_pack_fragment2);
   def("unpack_fragment", unpack_fragment);
-  def("pack_match", pack_match);
+  def("pack_match", py_pack_match);
   def("unpack_match", unpack_match);
 
   class_<BoolVector>("BoolVector")
@@ -146,13 +178,21 @@ BOOST_PYTHON_MODULE(libmogli) {
       .def("__iter__", iterator<NodeVector>())
       .def(vector_indexing_suite<NodeVector>());
 
+  // Vector iteration policies (py3 port):
+  //  * MoleculeVector / FragmentVector hold boost::shared_ptr<T>. return_internal_reference<> on a
+  //    shared_ptr<T>& wrapped the *shared_ptr object* in a Python instance, which no method taking
+  //    `T&` accepts (ArgumentError ... {lvalue}). return_by_value converts the shared_ptr through
+  //    the class's registered shared_ptr<T> holder: Python gets the SAME C++ object (reference
+  //    semantics, lifetime shared via the shared_ptr), no copy.
+  //  * MatchVector holds Match by value; return_internal_reference<> (custodian: the iterator, which
+  //    keeps the vector alive) works there and is kept unchanged from the py2 build.
   typedef std::vector<boost::shared_ptr<Molecule> > MoleculeVector;
   class_<MoleculeVector, boost::noncopyable>("MoleculeVector")
-      .def("__iter__", iterator<MoleculeVector, return_internal_reference<> >())
+      .def("__iter__", iterator<MoleculeVector, return_value_policy<return_by_value> >())
       .def("__len__", &MoleculeVector::size);
 
   class_<FragmentVector, boost::noncopyable>("FragmentVector")
-      .def("__iter__", iterator<FragmentVector, return_internal_reference<> >())
+      .def("__iter__", iterator<FragmentVector, return_value_policy<return_by_value> >())
       .def("__len__", &FragmentVector::size);
 
   class_<MatchVector, boost::noncopyable>("MatchVector")
