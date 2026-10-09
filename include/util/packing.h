@@ -160,7 +160,17 @@ namespace msgpack {
         std::vector<std::pair<int, unsigned short> > atoms = arr[0].as<std::vector<std::pair<int, unsigned short> > >();
 
         for (std::vector<std::pair<int, unsigned short> >::const_iterator it = atoms.begin(), end = atoms.end(); it != end; ++it) {
-          mol.add_atom(it->first, it->second);
+          // hack for better matching
+          // TODO remove hack!
+          if (it->second == ((unsigned short) 5)) {
+            mol.add_atom(it->first,( (unsigned short) 12));
+          } else if (it->second == ((unsigned short) 59)) {
+            mol.add_atom(it->first, ((unsigned short) 21));
+          } else if (it->second == ((unsigned short) 20)) {
+            mol.add_atom(it->first, ((unsigned short) 21));
+          } else {
+            mol.add_atom(it->first, it->second);
+          }
         }
 
         std::vector<std::pair<int, int> > edges = arr[1].as<std::vector<std::pair<int, int> > >();

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 2.8)
 project(mogli)
 
 set( LIBLEMON_ROOT "$ENV{HOME}/lemon" CACHE PATH "Additional search directory for lemon library" )
@@ -13,11 +13,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -std=c++11")
 set(CMAKE_C_FLAGS_DEBUG "-g -ggdb -O0 -DDEBUG -std=c99")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -std=c99")
 
-find_package( Boost 1.60.0 REQUIRED COMPONENTS python)
+find_package( Boost 1.55.0 REQUIRED COMPONENTS python)
 set( Boost_USE_STATIC_LIBS OFF )
 set( Boost_USE_MULTITHREADED ON )
 set( Boost_USE_STATIC_RUNTIME OFF )
 include_directories("${Boost_INCLUDE_DIRS}" "/usr/include/python2.7")
+
+find_package(PythonLibs REQUIRED)
 
 if( ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" )
     set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++ " )
@@ -82,4 +84,4 @@ add_library(mogli SHARED ${HEADER_FILES} ${SOURCE_FILES} src/util/boosting.cpp $
 target_link_libraries(mogli ${Boost_LIBRARIES} ${CommonLibs})
 
 add_executable(report test/report.cpp ${SOURCE_FILES} ${NAUTY_SRC} ${LAD_SRC})
-target_link_libraries(report ${Boost_LIBRARIES} ${CommonLibs})
+target_link_libraries(report ${Boost_LIBRARIES} ${CommonLibs} ${PYTHON_LIBRARIES})
